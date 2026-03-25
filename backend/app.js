@@ -1,26 +1,71 @@
 const express = require("express");
 const cors = require("cors");
+const mysql = require("mysql2/promise"); // Importera mysql för att skapa databasen direkt
+
 const app = express();
-const db = require("./models");
-const PORT = 3001;
 
 // Middlewares
 app.use(cors());
 app.use(express.json());
-app.use(express.urlencoded({ extended: false }));
 
-// Importera routes [cite: 198]
-const productRoutes = require("./routes/productRoutes");
-const userRoutes = require("./routes/userRoutes");
+const PORT = 3001;
 
-// Koppla routes [cite: 63]
-app.use("/api/products", productRoutes);
-app.use("/api/users", userRoutes);
+async function startServer() {
+  try {
+    // Anslut till MySQL
+    console.log("Letar efter databasen...");
+    const connection = await mysql.createConnection({
+      host: "127.0.0.1",
+      port: 3306,
+      user: "root",
+      password: "",
+    });
 
-// Synka med XAMPP och starta [cite: 60]
-db.sequelize.sync({ alter: true }).then(() => {
-  console.log("Databasen är redo!");
-  app.listen(PORT, () =>
-    console.log(`Server körs på http://localhost:${PORT}`)
-  );
-});
+    // Skapa databasen om den inte redan finns
+    await connection.query("CREATE DATABASE IF NOT EXISTS `webbshop`;");
+    console.log("✅ Databasen 'webbshop' är redo!");
+
+    // Stäng den tillfälliga anslutningen
+    await connection.end();
+
+    // importera sequelize modellerna
+    const db = require("./models");
+
+    // Importera routes
+    const productRoutes = require("./routes/productRoutes");
+    const userRoutes = require("./routes/userRoutes");
+
+    // Koppla routes
+    app.use("/api/products", productRoutes);
+    app.use("/api/users", userRoutes);
+
+    // Synka tabellerna
+    await db.sequelize.sync({ alter: true });
+    console.log("Tabellerna är synkade!");
+
+    // Skapa testanvändaren om den inte redan finns
+    const User = db.user || db.User || db.users || db.Users;
+    const count = await User.count();
+
+    if (count === 0) {
+      await User.create({
+        id: 1,
+        first_name: "Test",
+        last_name: "Testsson",
+        email: "test@test.se",
+        password: "123",
+      });
+      console.log("✅ Skapade testanvändare (ID 1) automatiskt!");
+    }
+
+    // Starta webbservern!
+    app.listen(PORT, () => {
+      console.log(`Servern är igång på http://localhost:${PORT}`);
+    });
+  } catch (err) {
+    console.error("Ett fel uppstod när servern skulle starta:", err);
+  }
+}
+
+// Kör igång funktionen
+startServer();
